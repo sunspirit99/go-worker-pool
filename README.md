@@ -1,4 +1,4 @@
 # go-worker-manager
-- An implement of worker pools : run multiple task (functions) concurrently
+- An implement of go worker-pool : execute multiple tasks (functions) concurrently
 # Example :
   
