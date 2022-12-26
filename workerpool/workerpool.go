@@ -48,13 +48,11 @@ func (wm *WorkerPool) AssignTask(tasks ...*Task) {
 	wm.Wg.Wait()
 }
 
-// start WorkerPool
+// start WorkerPool with n workers
 func (wm *WorkerPool) Start() {
 	for i := range wm.Workers {
 		go wm.Workers[i].run(wm.Pool, wm.Wg)
 	}
-
-	fmt.Printf("%d workers are ready !\n", len(wm.Workers))
 }
 
 func (w *Worker) run(taskQueue chan *Task, wg *sync.WaitGroup) {
