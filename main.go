@@ -3,29 +3,24 @@ package main
 import (
 	"fmt"
 
-	wm "github.com/sunspirit9999/go-worker-manager/workerpool"
+	"github.com/sunspirit9999/go-worker-pool/workerpool"
 )
 
 func main() {
-	boss := wm.Init(10)
-	boss.Start()
+	pool := workerpool.Init(10)
+	pool.Start()
 
-	var tasks = []*wm.Task{
-		{
-			Name: "Sum",
-			Exec: func() {
-				Sum(10, 20)
-			},
-		},
-		{
-			Name: "Delta",
-			Exec: func() {
-				Delta(50, 20)
-			},
-		},
-	}
+	sum := workerpool.NewTask("Sum", func() {
+		Sum(10, 20)
+	})
 
-	boss.AssignTask(tasks...)
+	delta := workerpool.NewTask("Delta", func() {
+		Delta(20, 10)
+	})
+
+	pool.AssignTask(sum, delta)
+
+	fmt.Println(pool.TotalWorkers())
 }
 
 func Sum(a, b int) {
