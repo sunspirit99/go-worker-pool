@@ -21,7 +21,7 @@ type Task struct {
 	Exec func()
 }
 
-// init a WorkerPool
+// Initialize a WorkerPool
 func Init(numOfWorkers int) *WorkerPool {
 	return &WorkerPool{
 		Workers: make([]*Worker, numOfWorkers),
@@ -30,15 +30,15 @@ func Init(numOfWorkers int) *WorkerPool {
 	}
 }
 
-// init a task with name and execution func
-func NewTask(name string, exec func()) *Task {
+// Initialize a task with name and corresponding handler function
+func NewTask(name string, handler func()) *Task {
 	return &Task{
 		Name: name,
-		Exec: exec,
+		Exec: handler,
 	}
 }
 
-// assign a list of tasks for all workers (need to start WorkerPool before)
+// Assign a list of tasks for all workers(need to start a pool before)
 func (wm *WorkerPool) AssignTask(tasks ...*Task) {
 	for i := range tasks {
 		wm.Wg.Add(1)
@@ -48,7 +48,7 @@ func (wm *WorkerPool) AssignTask(tasks ...*Task) {
 	wm.Wg.Wait()
 }
 
-// start WorkerPool with n workers
+// Start the pool with n workers
 func (wm *WorkerPool) Start() {
 	for i := range wm.Workers {
 		go wm.Workers[i].run(wm.Pool, wm.Wg)
