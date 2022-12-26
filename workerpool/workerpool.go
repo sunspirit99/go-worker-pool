@@ -70,7 +70,7 @@ func (w *Worker) run(taskQueue chan *Task, wg *sync.WaitGroup) {
 	}
 }
 
-// Add n workers to current pool
+// Add n workers to current pool(if n < 0 then pool will reduced n workers)
 func (wm *WorkerPool) AddWorker(n int) error {
 	if n >= 0 {
 		for i := 1; i <= n; i++ {
