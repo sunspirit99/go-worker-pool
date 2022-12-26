@@ -1,7 +1,7 @@
 # go-worker-pool
 - An implement of go worker-pool : execute multiple tasks (function callings) concurrently
 # Example :
-```
+```go
 func main() {
 	// Init a pool with 10 workers
 	pool := workerpool.Init(10)
