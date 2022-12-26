@@ -13,13 +13,15 @@ func main() {
 	fmt.Println(pool.TotalWorkers())
 
 	// Init task : sum of 2 number
-	sum := workerpool.NewTask("Sum", func() {
+	sum := workerpool.NewTask("Sum", func() interface{}{
 		Sum(10, 20)
+		return nil
 	})
 	
 	// Init task : delta of 2 number
-	delta := workerpool.NewTask("Delta", func() {
+	delta := workerpool.NewTask("Delta", func() interface{}{
 		Delta(20, 10)
+		return nil
 	})
 	
 	// Assign the tasks to the pool for the workers inside to take out and process it
