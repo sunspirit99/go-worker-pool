@@ -1,21 +1,21 @@
 package workerpool
 
 import (
+	"context"
 	"errors"
-	"fmt"
-	"reflect"
+	"log"
 	"sync"
 )
 
 type WorkerPool struct {
-	Workers []*Worker
-	Pool    chan *Task
-	Wg      *sync.WaitGroup
-}
-
-type Worker struct {
-	Id     int
-	Result map[string]interface{}
+	TotalWorkers int
+	Pool         chan *Task
+	Wg           *sync.WaitGroup
+	Mutex        *sync.Mutex
+	Result       map[string]interface{}
+	Status       int // 1 is active, 0 is waiting, -1 is inactive
+	closeSignal  chan struct{}
+	done         chan struct{}
 }
 
 type Task struct {
@@ -24,17 +24,17 @@ type Task struct {
 }
 
 // Initialize a WorkerPool
-func Init(numOfWorkers int) *WorkerPool {
-	var workers []*Worker
-	for i := 1; i <= numOfWorkers; i++ {
-		workers = append(workers, &Worker{
-			Id: i,
-		})
-	}
+func Initialize(numOfWorkers int) *WorkerPool {
+
 	return &WorkerPool{
-		Workers: workers,
-		Pool:    make(chan *Task),
-		Wg:      &sync.WaitGroup{},
+		TotalWorkers: numOfWorkers,
+		Pool:         make(chan *Task),
+		Result:       make(map[string]interface{}),
+		Wg:           &sync.WaitGroup{},
+		Mutex:        &sync.Mutex{},
+		Status:       -1,
+		closeSignal:  make(chan struct{}, numOfWorkers),
+		done:         make(chan struct{}, numOfWorkers),
 	}
 }
 
@@ -47,94 +47,127 @@ func NewTask(name string, handler func() interface{}) *Task {
 }
 
 // Assign a list of tasks for all workers(need to start a pool before)
-func (wm *WorkerPool) AssignTask(tasks ...*Task) {
+func (wp *WorkerPool) AssignTask(ctx context.Context, tasks ...*Task) error {
+
+	wp.Status = 1
+
 	for i := range tasks {
-		wm.Wg.Add(1)
-		wm.Pool <- tasks[i]
+		wp.Wg.Add(1)
+
+		wp.Pool <- tasks[i]
 	}
 
-	wm.Wg.Wait()
+	wp.Wg.Wait()
+
+	return nil
+}
+
+// Free all workers in the pool
+func (wp *WorkerPool) Close() {
+
+	for i := 1; i <= wp.TotalWorkers; i++ {
+		wp.closeSignal <- struct{}{}
+	}
+
+	var totalClosedWorkers int
+
+	for {
+		if totalClosedWorkers == wp.TotalWorkers {
+			wp.Status = -1
+			wp.TotalWorkers = 0
+			wp.Wg = &sync.WaitGroup{}
+			return
+		}
+		<-wp.done
+		totalClosedWorkers += 1
+	}
+
 }
 
 // Start the pool with n workers
-func (wm *WorkerPool) Start() {
-	for i := range wm.Workers {
-		go wm.Workers[i].run(wm.Pool, wm.Wg)
+func (wp *WorkerPool) Start() {
+	if wp.Pool == nil {
+		return
 	}
 
+	for i := 1; i <= wp.TotalWorkers; i++ {
+		go wp.run()
+	}
+
+	wp.Status = 0
 }
 
-func (w *Worker) run(taskQueue chan *Task, wg *sync.WaitGroup) {
-	w.Result = make(map[string]interface{})
-
-	for task := range taskQueue {
-		func() {
-			defer func() {
-				if r := recover(); r != nil {
-					fmt.Println("Recovered. Your task has a panic !")
-				}
-			}()
-
-			result := task.Execute()
-
-			if result != nil {
-				if reflect.ValueOf(result).IsValid() {
-					w.Result[task.Name] = result
-				}
-			}
-		}()
-
-		wg.Done()
+// Get result of executed tasks by workers
+func (wp *WorkerPool) GetResult(taskName string) interface{} {
+	if _, ok := wp.Result[taskName]; ok {
+		return wp.Result[taskName]
 	}
+
+	return errors.New("task's result not found")
 }
 
-func (wm *WorkerPool) GetResult(taskName string) interface{} {
-	for i := range wm.Workers {
-		if _, ok := wm.Workers[i].Result[taskName]; ok {
-			return wm.Workers[i].Result[taskName]
-		}
+// Add n workers to current pool(if n < 0 then pool will reduced n workers)
+func (wp *WorkerPool) AddWorker(n int) error {
+	if wp.TotalWorkers < -n {
+		return errors.New("if n < 0, n must be less than total current workers")
 	}
+	wp.TotalWorkers += n
+	wp.Start()
 	return nil
-}
-
-// Add n workers to current pool(if n < 0 then pool will remove n last workers)
-func (wm *WorkerPool) AddWorker(n int) error {
-	lastWorkerId := len(wm.Workers)
-	if n >= 0 {
-		id := lastWorkerId
-		for i := 1; i <= n; i++ {
-			id += 1
-			wm.Workers = append(wm.Workers, &Worker{
-				Id:     id,
-				Result: make(map[string]interface{}),
-			})
-		}
-	} else {
-		if n > lastWorkerId {
-			return errors.New("n must be less than total current number of workers of pool")
-		}
-
-		wm.Workers = wm.Workers[:lastWorkerId+n]
-	}
-
-	return nil
-
 }
 
 // Get total current number of workers of pool
-func (wm *WorkerPool) TotalWorkers() int {
-	return len(wm.Workers)
+func (wp *WorkerPool) GetTotalWorkers() int {
+	return wp.TotalWorkers
 }
 
-// worker refreshing will free result stored at a list of workers (free all workers if calling function without params)
-func (wm *WorkerPool) RefreshWorker(id ...int) {
-	if len(id) == 0 {
-		for i := range wm.Workers {
-			wm.Workers[i].Result = nil
-		}
-	} else {
-		for i := 0; i <= len(id); i++ {
-			wm.Workers[i].Result = nil
+// Check current status of pool
+func (wp *WorkerPool) CheckStatus() string {
+	switch wp.Status {
+	case 1:
+		return "active"
+	case 0:
+		return "waiting"
+	default:
+		return "inactive"
+	}
+}
+
+// Remove all current results
+func (wp *WorkerPool) RefreshResult() {
+	wp.Result = nil
+}
+
+func (wp *WorkerPool) run() {
+
+	for {
+		select {
+		case <-wp.closeSignal:
+			defer func() {
+				wp.done <- struct{}{}
+			}()
+
+			return
+
+		case task := <-wp.Pool:
+			func() {
+				defer func() {
+					if r := recover(); r != nil {
+						log.Printf("Recovered. Your task %s has a panic !\n", task.Name)
+					}
+				}()
+
+				result := task.Execute()
+
+				wp.Mutex.Lock()
+				if result != nil {
+					wp.Result[task.Name] = result
+				}
+				wp.Mutex.Unlock()
+			}()
+
+			wp.Wg.Done()
 		}
 	}
+
 }

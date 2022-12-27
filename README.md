@@ -4,7 +4,7 @@
 ```
 func main() {
 	// Init a pool with 10 workers
-	pool := workerpool.Init(10)
+	pool := workerpool.Initialize(10)
 	
 	// Start the pool
 	pool.Start()
@@ -23,7 +23,7 @@ func main() {
 	})
 	
 	// Assign the tasks to the pool for the workers inside to take out and process it
-	pool.AssignTask(sum, delta)
+	pool.AssignTask(context.Background(), sum, delta)
 }
 
 

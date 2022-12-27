@@ -1,8 +1,11 @@
 package example
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"runtime"
+	"time"
 
 	"github.com/sunspirit9999/go-worker-pool/workerpool"
 )
@@ -13,15 +16,14 @@ var (
 )
 
 func New() {
-	pool := workerpool.Init(numOfWorkers)
+
+	pool := workerpool.Initialize(numOfWorkers)
 	pool.Start()
 
-	fmt.Println("Total workers : ", pool.TotalWorkers())
+	fmt.Println("Total workers : ", pool.GetTotalWorkers())
 
-	task1 := workerpool.NewTask("Sum", func() interface{} {
-		res := Sum(1, 2)
-		return res
-	})
+	ctx, cancel := context.WithTimeout(context.Background(), time.Minute) // set timeout
+	defer cancel()
 
 	var tasks []*workerpool.Task
 	for i := 1; i <= numOfTasks; i++ {
@@ -30,12 +32,16 @@ func New() {
 			if err != nil {
 				return err
 			}
+
 			return []int{mul, div}
 		})
 		tasks = append(tasks, task2)
 	}
 
-	pool.AssignTask(append(tasks, task1)...)
+	err := pool.AssignTask(ctx, tasks...)
+	if err != nil {
+		fmt.Println(err)
+	}
 
 	// Get result from the pool
 	result := pool.GetResult("Divide_10")
@@ -46,23 +52,24 @@ func New() {
 		fmt.Printf("type : %T, response : %+v\n", res, res)
 	}
 
-	// pool.RefreshWorker(1, 2, 3)
+	pool.Close()
+	fmt.Println("total worker's threads :", runtime.NumGoroutine()-1) // ignore main thread
 
-	for _, worker := range pool.Workers {
-		fmt.Printf("Worker %d : %+v\n", worker.Id, worker.Result)
+	pool.AddWorker(5)
+	fmt.Println("total worker's threads :", runtime.NumGoroutine()-1) // ignore main thread
+
+	pool.AssignTask(ctx, tasks...)
+
+	// Get result from the pool
+	result = pool.GetResult("Divide_10")
+	switch res := result.(type) {
+	case error:
+		fmt.Printf("type : %T, response : %+v\n", res, res)
+	case []int:
+		fmt.Printf("type : %T, response : %+v\n", res, res)
 	}
 
-	pool.AddWorker(-4)
-
-	for _, worker := range pool.Workers {
-		fmt.Printf("Worker %d : %+v\n", worker.Id, worker.Result)
-	}
-
-	pool.AddWorker(6)
-
-	for _, worker := range pool.Workers {
-		fmt.Printf("Worker %d : %+v\n", worker.Id, worker.Result)
-	}
+	fmt.Println("total worker's threads :", runtime.NumGoroutine()-1) // ignore main thread
 
 }
 
